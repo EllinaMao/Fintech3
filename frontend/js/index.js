@@ -1,15 +1,9 @@
-// import { abi } from './abi.js';
-
-// const contractAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
-// const contractAddress = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
-const contractAddress = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0";
-
+const contractAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 
 let current_account;
 let web3;
 let contract;
-
-
+let current_filter_author = null; 
 
 document.addEventListener('DOMContentLoaded', ()=>{
     const connection_btn = document.getElementById('connection_btn');
@@ -18,220 +12,215 @@ document.addEventListener('DOMContentLoaded', ()=>{
     const make_post_btn = document.getElementById('make_post_btn');
     if(make_post_btn) make_post_btn.addEventListener('click', make_post);
 
-        //ИЗМЕНЕННО
     const delete_all_btn = document.getElementById('delete_all_btn');
     if(delete_all_btn) delete_all_btn.addEventListener('click', delete_all_posts);
 
+    const filter_btn = document.getElementById('filter_btn');
+    if(filter_btn) filter_btn.addEventListener('click', apply_filter);
+
+    const show_all_btn = document.getElementById('show_all_btn');
+    if(show_all_btn) show_all_btn.addEventListener('click', clear_filter);
+
     if(window.ethereum){
-        console.log(`[INFO]: [${Date.now()}] Web3 provider detected`);
-
-        web3 = new Web3(window.ethereum);//есои передать адресс хардхед - не будет действий с кошельком.
-        //поэтому мы передали кошелек и он выступает как подписчик.
-
-        //инициализация контракта с адресом и ABI
+        web3 = new Web3(window.ethereum);
         contract = new web3.eth.Contract(abi, contractAddress);
-
 
         window.ethereum.on("accountsChanged", (accounts)=>{
             if(accounts.length === 0){
-                alert(`[ERROR]: [${Date.now()}] No accounts available`);
+                alert("Нет доступных аккаунтов");
                 current_account = undefined;
                 return; 
             }
-
-            current_account = accounts[0] || undefined;
-            console.log(`[INFO]: [${Date.now()}] Accounts changed: ${current_account}`);
+            current_account = accounts[0];
             enterToDapp();
         }); 
 
-        contract.events.PostCreated({fromBlock: 'latest'}).on('data', async (event) => {
-            console.log("Post created. ", event.returnValues);
-            await get_posts();
-        });
-        //ИЗМЕНЕННО
-        contract.events.AllPostsDeleted({fromBlock: 'latest'}).on('data', async (event) => {
-        console.log(`[LOG]: [${Date.now()}] All posts deleted.`);
-        await get_posts();
-        });
-        //ИЗМЕНЕННО
-        contract.events.PostDeleted({fromBlock: 'latest'}).on('data', async (event) => {
-            console.log(`[LOG]: [${Date.now()}] Post deleted.`);
-            await get_posts();
-        });
+
+        contract.events.PostCreated({fromBlock: 'latest'}).on('data', async () => await get_posts());
+        contract.events.AllPostsDeleted({fromBlock: 'latest'}).on('data', async () => await get_posts());
+        contract.events.PostDeleted({fromBlock: 'latest'}).on('data', async () => await get_posts());
+        contract.events.PostLiked({fromBlock: 'latest'}).on('data', async () => await get_posts());
     }
 });
 
-
-
-
 const connectWallet = async(e)=>{
-    if(!window.ethereum){
-        alert("Please install web3 provider");
-        return;
-    }
+    if(!window.ethereum) return alert("Пожалуйста, установите Web3 провайдер");
     try {
-        const accounts = await window.ethereum.request({
-            method: 'eth_requestAccounts'
-        });
-        if(!accounts || !Array.isArray(accounts)){
-            alert(`[ERROR]: [${Date.now()}] Accounts not found`);
-            return;
-        }
-        if(accounts.length === 0 ){
-            alert(`[ERROR]: [${Date.now()}] Accounts not found`)
-            return;
-        }
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        if(!accounts || accounts.length === 0 ) return;
+        
         current_account = accounts[0];
         e.target.hidden = true;
         enterToDapp();
     } catch (error) {
-        alert(`[ERROR]: [${Date.now()}] Connect to DApp error. See logs`);
-        console.error(`[ERROR]: [${Date.now()}] Connect error: ${error}`);
+        console.error("Ошибка подключения:", error);
     }
 }
 
-const enterToDapp = ()=>{
+const enterToDapp = async () => {
     const account_lbl = document.getElementById('account_lbl');
     account_lbl.hidden = false;
-    account_lbl.textContent = current_account;
-    account_lbl.style.color = 'darkgreen';
+    account_lbl.textContent = `Подключен: ${current_account}`;
+    account_lbl.style.color = '#28a745';
 
-    d_app();
+    document.getElementById('dapp').hidden = false;
     
+    await check_owner_status();
+    
+    get_posts();
 }
 
-const d_app = () => {
-    const dapp = document.getElementById('dapp');
-    if (dapp){
-    dapp.hidden = false;
-
-    const post_text = document.getElementById('post_text');
-    post_text.value = '';
+const check_owner_status = async () => {
+    try {
+        const owner_address = await contract.methods.get_owner().call();
+        const delete_all_btn = document.getElementById('delete_all_btn');
+        
+        if (current_account.toLowerCase() === owner_address.toLowerCase()) {
+            delete_all_btn.style.display = 'inline-block'; 
+        } else {
+            delete_all_btn.style.display = 'none'; 
+        }
+    } catch (error) {
+        console.error("Ошибка при проверке владельца контракта:", error);
     }
+}
+
+const apply_filter = () => {
+    const input_val = document.getElementById('filter_author_input').value.trim().toLowerCase();
+    if (input_val) {
+        current_filter_author = input_val;
+        get_posts();
+    }
+}
+
+const clear_filter = () => {
+    document.getElementById('filter_author_input').value = '';
+    current_filter_author = null;
+    get_posts();
 }
 
 const make_post = async()=>{
     try{
         const post_text = document.getElementById('post_text');
-        if (!post_text.value) {
-            alert(`[ERROR]: [${Date.now()}] Post cannot be empty`);
-            return;
-        };
+        if (!post_text.value) return;
 
-        const message = post_text.value;
-        await contract.methods.create_post(message).send({ from: current_account });
+        await contract.methods.create_post(post_text.value).send({ from: current_account });
         post_text.value = '';
-
-        const posts = await contract.methods.get_posts().call();
-        console.log(`[INFO]: [${Date.now()}] Posts: `, posts);
     }
     catch (error){
-        // alert(`[ERROR]: [${Date.now()}] Make post error. See logs`);
-        console.error(`[ERROR]: [${Date.now()}] Make post error: ${error}`);
+        console.error("Ошибка при создании поста:", error);
     }
 }
 
 const get_posts = async()=>{
     try{
-        const posts = await contract.methods.get_posts().call();
+        let posts = await contract.methods.get_posts().call();
         render_posts(posts);
-        if (posts.length === 0) {
-            console.log(`[INFO]: [${Date.now()}] No posts found`);
-            
-        }
-        else {
-            console.log(`[INFO]: [${Date.now()}] Posts found: ${posts.length}`);
-        }   
     }
     catch (error){
-        console.error(`[ERROR]: [${Date.now()}] Get posts error: ${error}`);
+        console.error("Ошибка при получении постов:", error);
     }
 }
-
 const render_posts = async(posts)=>{
-    const post_list = document.getElementById('post_list');
-    
-
-    while (post_list.firstChild) {
-        post_list.removeChild(post_list.firstChild);
-    }
-
-    //Измененно
     const empty_author = "0x0000000000000000000000000000000000000000";
     
-    if (posts.length === 0 || posts.every(post => post.author === empty_author)) {
-    const p = document.createElement('p');
-    p.textContent = "Nothing here yet";
-    post_list.appendChild(p);
-    return;
+    let valid_posts = [];
+    for (let i = 0; i < posts.length; i++) {
+        let post = posts[i];
+        if (post.author === empty_author) continue;
+
+        if (current_filter_author && post.author.toLowerCase() !== current_filter_author) {
+            continue;
+        }
+        
+        valid_posts.push({ data: post, id: i });
     }
 
-    posts.forEach((post, idx) => {
-        if (post.author === empty_author) return;
-        post_list.appendChild(create_post_element(post, idx));
-    });
+    const elements = [];
+    for (let i = valid_posts.length - 1; i >= 0; i--) {
+        const postElement = await create_post_element(valid_posts[i].data, valid_posts[i].id);
+        elements.push(postElement);
+    }
 
+    const post_list = document.getElementById('post_list');
+    post_list.innerHTML = ''; 
+
+    if (elements.length === 0) {
+        post_list.innerHTML = '<p>Здесь пока ничего нет.</p>';
+        return;
+    }
+
+    elements.forEach(el => post_list.appendChild(el));
 }
-const create_post_element = (post, id) => {
+
+const create_post_element = async (post, id) => {
     const div = document.createElement('div');
+    div.className = 'post-card';
     
-    const author = document.createElement('p');
-    author.textContent = `Author: ${post.author}`;
-
-    const content = document.createElement('p');
-    content.textContent = `Content: ${post.content}`;
-
-    const timestamp = document.createElement('p');
-
     const date = new Date(Number(post.timestamp) * 1000);
-    timestamp.textContent = `Created at: ${date.toLocaleString()}`;
-
-    const likes = document.createElement('p');
-    likes.textContent = `💕: ${post.like}`;
-
-
-
-
-    div.appendChild(author);
-    div.appendChild(content);
-    div.appendChild(timestamp);
-    div.appendChild(likes);
-
-
-    //ИЗМЕНЕННО
-    div.appendChild(delete_button(id));
-
-    div.appendChild(document.createElement('hr'));
     
+    const header = document.createElement('div');
+    header.className = 'post-header';
+    header.textContent = `Автор: ${post.author} | Создано: ${date.toLocaleString()}`;
+
+    const content = document.createElement('div');
+    content.className = 'post-content';
+    content.textContent = post.content;
+
+    const actions = document.createElement('div');
+    actions.className = 'post-actions';
+
+    const hasLiked = await contract.methods.has_liked(id, current_account).call();
+
+    const likeBtn = document.createElement('button');
+    likeBtn.className = hasLiked ? 'like-btn liked' : 'like-btn';
+    likeBtn.textContent = hasLiked ? '🤍' : '❤️';
+    likeBtn.onclick = () => toggle_like(id);
+
+    const likesCount = document.createElement('span');
+    likesCount.className = 'likes-count';
+    likesCount.textContent = `❤️: ${post.likesCount}`;
+
+    actions.appendChild(likeBtn);
+    actions.appendChild(likesCount);
+
+    if (post.author.toLowerCase() === current_account.toLowerCase()) {
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'danger';
+        deleteBtn.textContent = "Удалить";
+        deleteBtn.style.marginLeft = 'auto';
+        deleteBtn.onclick = () => delete_func(id);
+        actions.appendChild(deleteBtn);
+    }
+
+    div.appendChild(header);
+    div.appendChild(content);
+    div.appendChild(actions);
 
     return div;
 }
 
-    //ИЗМЕНЕННО
-const delete_button = (id) => {
-    const button = document.createElement('button');
-    button.textContent = "✖️";
-    button.onclick = () => delete_func(id);
-    return button;
+const toggle_like = async(id) => {
+    try {
+        await contract.methods.toggle_like(id).send({ from: current_account });
+    } catch (error) {
+        console.error("Ошибка при постановке лайка:", error);
+    }
 }
 
-    //ИЗМЕНЕННО
 const delete_func = async(id) => {
-    try{
+    try {
         await contract.methods.delete_post(id).send({ from: current_account });
-
-        console.log(`[INFO]: [${Date.now()}] Post deleted: ${id}`);
-    }
-    catch (error){
-        console.error(`[ERROR]: [${Date.now()}] Delete post error: ${error}`);
+    } catch (error) {
+        console.error("Ошибка при удалении поста:", error);
     }
 }
-//ИЗМЕНЕННО
+
 const delete_all_posts = async() => {
-    try{
+    if(!confirm("Вы уверены, что хотите удалить ВСЕ посты?")) return;
+    try {
         await contract.methods.delete_all_posts().send({ from: current_account });
-    }
-    catch (error){
-        console.error(`[ERROR]: [${Date.now()}] Delete all posts error: ${error}`);
+    } catch (error) {
+        console.error("Ошибка при удалении всех постов:", error);
     }
 }

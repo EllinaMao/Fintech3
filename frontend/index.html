@@ -3,27 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>Web3 Forum</title>
+   
 </head>
 <body>
-    <button id="connection_btn">Connect Wallet</button>
-    <h1 hidden id="account_lbl"></h1>
+    <div>
+        <button id="connection_btn">Connect Wallet</button>
+        <h3 hidden id="account_lbl"></h3>
 
-
-    <div hidden id="dapp">
-        <div style="margin-bottom: 10px;">
-            <button id="delete_all_btn">Delete All Posts</button>
-        </div>
-        <div>
-            <textarea id = "post_text" style="width: 100%; height: 100px;"></textarea>
-            <!-- <br> -->
-            <button id="make_post_btn">Post</button>
-        </div>
+        <div hidden id="dapp">
+            <div>
+                <input type="text" id="filter_author_input" placeholder="Адрес автора для фильтрации..." style="width: 60%;">
+                <button id="filter_btn">Показать автора</button>
+                <button id="show_all_btn">Все посты</button>
+                <button id="delete_all_btn" class="danger" style="display: none;">Удалить все</button>
+            </div>
             
-        <div id="post_list"></div>
+            <div>
+                <textarea id="post_text" rows="4" placeholder="Что у вас нового?"></textarea>
+                <button id="make_post_btn">Опубликовать</button>
+            </div>
+                
+            <h3 style="margin-top: 30px;">Лента</h3>
+            <div id="post_list"></div>
+        </div>
     </div>
 
-    <script src=" https://cdn.jsdelivr.net/npm/web3@4.16.0/dist/web3.min.js "></script>
+    <script src="https://cdn.jsdelivr.net/npm/web3@4.16.0/dist/web3.min.js"></script>
     <script src="./js/abi.js"></script>
     <script src="./js/index.js"></script>
 </body>
